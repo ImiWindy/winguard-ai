@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { Buffer } from "node:buffer";
 import { getSupabaseServerClient } from "../../../lib/supabase/server";
 import { uploadScreenshot, deleteScreenshot } from "../../../lib/storage/upload";
 
@@ -64,7 +63,12 @@ async function addTrade(formData: FormData) {
   redirect("/trades");
 }
 
-export default async function AddTradePage() {
+const ERROR_MESSAGES: Record<string, string> = {
+  validation: "لطفاً تمام فیلدهای اجباری را با مقادیر معتبر پر کنید.",
+  insert_failed: "خطایی در هنگام ذخیره معامله رخ داد. لطفاً دوباره تلاش کنید.",
+};
+
+export default async function AddTradePage({ searchParams }: { searchParams: { error?: string } }) {
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     return (
@@ -76,8 +80,16 @@ export default async function AddTradePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/auth/login");
 
+  const errorKey = searchParams.error || "";
+  const errorMessage = ERROR_MESSAGES[errorKey];
+
   return (
     <div className="max-w-xl mx-auto py-12">
+      {errorMessage && (
+        <div className="p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-50 dark:bg-gray-800 dark:text-red-400" role="alert">
+          {errorMessage}
+        </div>
+      )}
       <h2 className="text-2xl font-bold mb-6">Add Trade</h2>
       <form action={addTrade} className="grid gap-4" encType="multipart/form-data">
         <div>
