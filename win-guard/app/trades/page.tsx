@@ -1,16 +1,41 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "../../lib/supabase/server";
-import { headers } from "next/headers";
+import { Trade } from "../../lib/types";
+import { deleteTrade } from "./actions";
 
 function normalizeStr(v: unknown): string | undefined {
   const s = String(v || "").trim();
   return s.length ? s : undefined;
 }
 
+function calculatePnl(trade: Trade): number {
+  const diff = trade.side === 'long'
+    ? trade.exit_price - trade.entry_price
+    : trade.entry_price - trade.exit_price;
+  return diff * trade.position_size;
+}
+
+function getScreenshotPath(url: string | null | undefined): string {
+  if (!url) return "";
+  try {
+    const urlObj = new URL(url);
+    // Path is usually /public/bucket-name/path/to/file.ext
+    // We want to extract the part after the bucket name.
+    const parts = urlObj.pathname.split("/trade-screenshots/");
+    return parts[1] || "";
+  } catch {
+    return "";
+  }
+}
+
 export const dynamic = "force-dynamic";
 
-export default async function TradesListPage() {
+export default async function TradesListPage({
+  searchParams,
+}: {
+  searchParams: { symbol?: string; feeling?: string; page?: string };
+}) {
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     return (
@@ -22,29 +47,23 @@ export default async function TradesListPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/auth/login");
 
-  // read URL search params from headers
-  const h = headers();
-  const host = h.get("x-forwarded-host") || h.get("host") || "localhost:3000";
-  const proto = h.get("x-forwarded-proto") || "http";
-  const path = h.get("x-invoke-path") || "/trades";
-  const qs = h.get("x-invoke-query") || "";
-  const url = new URL(`${proto}://${host}${path}${qs ? `?${qs}` : ''}`);
-  const symbolParam = normalizeStr(url.searchParams.get("symbol"));
-  const feelingParam = normalizeStr(url.searchParams.get("feeling"));
+  const symbolParam = normalizeStr(searchParams.symbol);
+  const feelingParam = normalizeStr(searchParams.feeling);
 
   let query = supabase
     .from("trades")
-    .select("id, symbol, entry_price, exit_price, position_size, feeling, created_at")
+    .select("*, side") // fetch side for P/L calculation
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
   if (symbolParam) query = query.ilike("symbol", `%${symbolParam}%`);
   if (feelingParam) query = query.eq("feeling", feelingParam);
   // pagination
   const pageSize = 20;
-  const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+  const page = Math.max(1, parseInt(searchParams.page || "1", 10));
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
   const { data: rows } = await query.range(from, to);
+  const trades: Trade[] = (rows || []).map(r => ({...r, screenshot_url: r.screenshot_url || null}));
 
   return (
     <div className="py-8 space-y-4">
@@ -73,27 +92,42 @@ export default async function TradesListPage() {
           <thead className="bg-gray-50 dark:bg-gray-900/40">
             <tr>
               <th className="text-left p-3">Symbol</th>
+              <th className="text-left p-3">P/L</th>
               <th className="text-left p-3">Entry</th>
               <th className="text-left p-3">Exit</th>
               <th className="text-left p-3">Size</th>
               <th className="text-left p-3">Feeling</th>
               <th className="text-left p-3">Date</th>
+              <th className="text-left p-3">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {(rows || []).map((t: any) => (
-              <tr key={t.id} className="border-t">
-                <td className="p-3">{t.symbol}</td>
-                <td className="p-3">{t.entry_price}</td>
-                <td className="p-3">{t.exit_price}</td>
-                <td className="p-3">{t.position_size}</td>
-                <td className="p-3">{t.feeling}</td>
-                <td className="p-3">{t.created_at ? new Date(t.created_at).toLocaleDateString() : '-'}</td>
-              </tr>
-            ))}
-            {(!rows || rows.length === 0) && (
+            {trades.map((t) => {
+              const pnl = calculatePnl(t);
+              const pnlColor = pnl > 0 ? "text-green-500" : pnl < 0 ? "text-red-500" : "";
+              const screenshotPath = getScreenshotPath(t.screenshot_url);
+              return (
+                <tr key={t.id} className="border-t">
+                  <td className="p-3 font-mono">{t.symbol}</td>
+                  <td className={`p-3 font-mono ${pnlColor}`}>{pnl.toFixed(2)}</td>
+                  <td className="p-3">{t.entry_price}</td>
+                  <td className="p-3">{t.exit_price}</td>
+                  <td className="p-3">{t.position_size}</td>
+                  <td className="p-3">{t.feeling}</td>
+                  <td className="p-3">{t.created_at ? new Date(t.created_at).toLocaleDateString() : '-'}</td>
+                  <td className="p-3">
+                    <form action={deleteTrade}>
+                      <input type="hidden" name="tradeId" value={t.id} />
+                      <input type="hidden" name="screenshotPath" value={screenshotPath} />
+                      <button type="submit" className="text-red-500 hover:underline">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              );
+            })}
+            {(trades.length === 0) && (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-gray-500">No trades yet</td>
+                <td colSpan={8} className="p-6 text-center text-gray-500">No trades yet</td>
               </tr>
             )}
           </tbody>
