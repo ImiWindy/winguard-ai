@@ -2,6 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "../../lib/supabase/server";
 
+function normalizeStr(v: unknown): string | undefined {
+  const s = String(v || "").trim();
+  return s.length ? s : undefined;
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function TradesListPage() {
@@ -16,11 +21,19 @@ export default async function TradesListPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/auth/login");
 
-  const { data: rows } = await supabase
+  // read URL search params via headers in server component
+  const url = new URL((global as any).resourceUrl ?? "http://localhost");
+  const symbolParam = normalizeStr(url.searchParams.get("symbol"));
+  const feelingParam = normalizeStr(url.searchParams.get("feeling"));
+
+  let query = supabase
     .from("trades")
-    .select("id, symbol, entry_price, exit_price, position_size, feeling")
+    .select("id, symbol, entry_price, exit_price, position_size, feeling, created_at")
     .eq("user_id", user.id)
     .order("id", { ascending: false });
+  if (symbolParam) query = query.ilike("symbol", `%${symbolParam}%`);
+  if (feelingParam) query = query.eq("feeling", feelingParam);
+  const { data: rows } = await query;
 
   return (
     <div className="py-8 space-y-4">
@@ -28,7 +41,23 @@ export default async function TradesListPage() {
         <h2 className="text-2xl font-bold">Trades</h2>
         <Link href="/trades/add" className="px-3 py-2 border rounded-md text-sm">Add Trade</Link>
       </div>
-      <div className="overflow-x-auto border rounded-md">
+      <form className="flex flex-wrap gap-2 items-end">
+        <div>
+          <label className="block text-xs mb-1">Symbol</label>
+          <input name="symbol" className="border rounded-md px-3 py-1 text-sm" placeholder="BTC" defaultValue={symbolParam} />
+        </div>
+        <div>
+          <label className="block text-xs mb-1">Feeling</label>
+          <select name="feeling" className="border rounded-md px-3 py-1 text-sm" defaultValue={feelingParam}>
+            <option value="">All</option>
+            <option value="Neutral">Neutral</option>
+            <option value="Fear">Fear</option>
+            <option value="Greed">Greed</option>
+          </select>
+        </div>
+        <button className="px-3 py-1 border rounded-md text-sm">Apply</button>
+      </form>
+      <div className="overflow-x-auto border rounded-md mt-4">
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-900/40">
             <tr>
@@ -37,6 +66,7 @@ export default async function TradesListPage() {
               <th className="text-left p-3">Exit</th>
               <th className="text-left p-3">Size</th>
               <th className="text-left p-3">Feeling</th>
+              <th className="text-left p-3">Date</th>
             </tr>
           </thead>
           <tbody>
@@ -47,11 +77,12 @@ export default async function TradesListPage() {
                 <td className="p-3">{t.exit_price}</td>
                 <td className="p-3">{t.position_size}</td>
                 <td className="p-3">{t.feeling}</td>
+                <td className="p-3">{t.created_at ? new Date(t.created_at).toLocaleDateString() : '-'}</td>
               </tr>
             ))}
             {(!rows || rows.length === 0) && (
               <tr>
-                <td colSpan={5} className="p-6 text-center text-gray-500">No trades yet</td>
+                <td colSpan={6} className="p-6 text-center text-gray-500">No trades yet</td>
               </tr>
             )}
           </tbody>
