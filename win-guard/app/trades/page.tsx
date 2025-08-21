@@ -34,7 +34,7 @@ export const dynamic = "force-dynamic";
 export default async function TradesListPage({
   searchParams,
 }: {
-  searchParams: { symbol?: string; feeling?: string; page?: string };
+  searchParams: { symbol?: string; feeling?: string; page?: string; date_from?: string; date_to?: string };
 }) {
   const supabase = getSupabaseServerClient();
   if (!supabase) {
@@ -49,6 +49,8 @@ export default async function TradesListPage({
 
   const symbolParam = normalizeStr(searchParams.symbol);
   const feelingParam = normalizeStr(searchParams.feeling);
+  const dateFromParam = normalizeStr(searchParams.date_from);
+  const dateToParam = normalizeStr(searchParams.date_to);
 
   let query = supabase
     .from("trades")
@@ -57,6 +59,8 @@ export default async function TradesListPage({
     .order("created_at", { ascending: false });
   if (symbolParam) query = query.ilike("symbol", `%${symbolParam}%`);
   if (feelingParam) query = query.eq("feeling", feelingParam);
+  if (dateFromParam) query = query.gte("created_at", new Date(`${dateFromParam}T00:00:00.000Z`).toISOString());
+  if (dateToParam) query = query.lte("created_at", new Date(`${dateToParam}T23:59:59.999Z`).toISOString());
   // pagination
   const pageSize = 20;
   const page = Math.max(1, parseInt(searchParams.page || "1", 10));
@@ -84,6 +88,14 @@ export default async function TradesListPage({
             <option value="Fear">Fear</option>
             <option value="Greed">Greed</option>
           </select>
+        </div>
+        <div>
+          <label className="block text-xs mb-1">From</label>
+          <input name="date_from" type="date" className="border rounded-md px-3 py-1 text-sm" defaultValue={dateFromParam} />
+        </div>
+        <div>
+          <label className="block text-xs mb-1">To</label>
+          <input name="date_to" type="date" className="border rounded-md px-3 py-1 text-sm" defaultValue={dateToParam} />
         </div>
         <button className="px-3 py-1 border rounded-md text-sm">Apply</button>
       </form>

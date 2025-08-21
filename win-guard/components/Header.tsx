@@ -5,14 +5,15 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 const Header = async () => {
   const supabase = getSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const userResp = supabase ? await supabase.auth.getUser() : { data: { user: null } } as any;
+  const user = userResp?.data?.user ?? null;
 
   const handleLogout = async () => {
     "use server";
     const supabase = getSupabaseServerClient();
-    await supabase.auth.signOut();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
     return redirect("/auth/login");
   };
 
