@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "../../lib/supabase/server";
+import { headers } from "next/headers";
 
 function normalizeStr(v: unknown): string | undefined {
   const s = String(v || "").trim();
@@ -21,8 +22,13 @@ export default async function TradesListPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/auth/login");
 
-  // read URL search params via headers in server component
-  const url = new URL((global as any).resourceUrl ?? "http://localhost");
+  // read URL search params from headers
+  const h = headers();
+  const host = h.get("x-forwarded-host") || h.get("host") || "localhost:3000";
+  const proto = h.get("x-forwarded-proto") || "http";
+  const path = h.get("x-invoke-path") || "/trades";
+  const qs = h.get("x-invoke-query") || "";
+  const url = new URL(`${proto}://${host}${path}${qs ? `?${qs}` : ''}`);
   const symbolParam = normalizeStr(url.searchParams.get("symbol"));
   const feelingParam = normalizeStr(url.searchParams.get("feeling"));
 
@@ -30,10 +36,15 @@ export default async function TradesListPage() {
     .from("trades")
     .select("id, symbol, entry_price, exit_price, position_size, feeling, created_at")
     .eq("user_id", user.id)
-    .order("id", { ascending: false });
+    .order("created_at", { ascending: false });
   if (symbolParam) query = query.ilike("symbol", `%${symbolParam}%`);
   if (feelingParam) query = query.eq("feeling", feelingParam);
-  const { data: rows } = await query;
+  // pagination
+  const pageSize = 20;
+  const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+  const { data: rows } = await query.range(from, to);
 
   return (
     <div className="py-8 space-y-4">

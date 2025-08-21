@@ -2,12 +2,13 @@ import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "../../lib/supabase/server";
 
 type Trade = {
-  id: number;
+  id: string;
   symbol: string;
   entry_price: number;
   exit_price: number;
   position_size: number;
   feeling: string | null;
+  side?: 'long' | 'short';
   created_at?: string;
 };
 
@@ -29,12 +30,18 @@ export default async function DashboardPage() {
 
   const { data: trades } = await supabase
     .from("trades")
-    .select("id, symbol, entry_price, exit_price, position_size, feeling, created_at")
+    .select("id, symbol, entry_price, exit_price, position_size, feeling, side, created_at")
     .eq("user_id", user.id)
     .order("created_at", { ascending: true });
 
   const list: Trade[] = (trades as any) || [];
-  const pnlSeries = list.map((t) => (t.exit_price - t.entry_price) * t.position_size);
+  const pnlSeries = list.map((t) => {
+    const isShort = (t.side || 'long') === 'short';
+    const pnl = isShort
+      ? (t.entry_price - t.exit_price) * t.position_size
+      : (t.exit_price - t.entry_price) * t.position_size;
+    return Number.isFinite(pnl) ? pnl : 0;
+  });
   const cumulative = pnlSeries.reduce<number[]>((acc, v) => {
     const last = acc.length > 0 ? acc[acc.length - 1] : 0;
     acc.push(last + v);

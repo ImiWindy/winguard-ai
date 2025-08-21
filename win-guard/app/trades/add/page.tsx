@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Buffer } from "node:buffer";
 import { getSupabaseServerClient } from "../../../lib/supabase/server";
+import { uploadScreenshot, deleteScreenshot } from "../../../lib/storage/upload";
 
 export const dynamic = "force-dynamic";
 
@@ -23,66 +24,41 @@ async function addTrade(formData: FormData) {
   const positionSize = parseFloat(String(formData.get("positionSize") || ""));
   const feeling = String(formData.get("feeling") || "Neutral");
   const notes = String(formData.get("notes") || "").trim();
+  const side = String(formData.get("side") || "long").toLowerCase();
   const screenshotFile = formData.get("screenshot") as File | null;
 
-  if (!symbol || Number.isNaN(entryPrice) || Number.isNaN(exitPrice) || Number.isNaN(positionSize)) {
+  if (!symbol || Number.isNaN(entryPrice) || Number.isNaN(exitPrice) || Number.isNaN(positionSize) || (side !== "long" && side !== "short")) {
     redirect("/trades/add?error=validation");
   }
-
-  // Insert minimal required fields first to avoid column-mismatch errors
-  const { data: inserted, error: insertError } = await supabase!
-    .from("trades")
-    .insert({
-      user_id: user.id,
-      symbol,
-      entry_price: entryPrice,
-      exit_price: exitPrice,
-      position_size: positionSize,
-      feeling,
-    })
-    .select("id")
-    .single();
-
-  if (insertError || !inserted) {
-    redirect("/trades/add?error=insert_failed");
-  }
-
-  // Optionally upload screenshot to Storage and attach URL; ignore errors if bucket/permissions not set
+  // Upload screenshot first (if present)
+  let uploadedPath: string | null = null;
   let screenshotUrl: string | null = null;
   if (screenshotFile && screenshotFile.size > 0) {
     try {
-      const arrayBuffer = await screenshotFile.arrayBuffer();
-      const path = `${user.id}/${inserted.id}-${Date.now()}-${screenshotFile.name}`;
-      const { error: upErr } = await supabase.storage
-        .from("trade-screenshots")
-        .upload(path, Buffer.from(arrayBuffer), {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: screenshotFile.type || "application/octet-stream",
-        });
-      if (!upErr) {
-        const { data } = supabase.storage.from("trade-screenshots").getPublicUrl(path);
-        screenshotUrl = data.publicUrl || null;
-      }
-    } catch (_) {
-      // ignore upload errors
-    }
+      const res = await uploadScreenshot(supabase!, user.id, screenshotFile);
+      screenshotUrl = res.url;
+      uploadedPath = res.path;
+    } catch {}
   }
 
-  // Try to update optional fields if the columns exist (notes, screenshot_url); ignore errors
-  if ((notes && notes.length > 0) || screenshotUrl) {
-    try {
-      await supabase
-        .from("trades")
-        .update({
-          // These columns must exist in your schema to be saved
-          notes: notes && notes.length > 0 ? notes : undefined,
-          screenshot_url: screenshotUrl ?? undefined,
-        })
-        .eq("id", inserted.id);
-    } catch (_) {
-      // ignore update errors if columns don't exist
-    }
+  try {
+    await supabase!
+      .from("trades")
+      .insert({
+        user_id: user.id,
+        symbol,
+        entry_price: entryPrice,
+        exit_price: exitPrice,
+        position_size: positionSize,
+        feeling,
+        side,
+        notes: notes && notes.length > 0 ? notes : null,
+        screenshot_url: screenshotUrl,
+      });
+  } catch (e) {
+    // Cleanup uploaded file if DB insert failed
+    await deleteScreenshot(supabase!, uploadedPath);
+    redirect("/trades/add?error=insert_failed");
   }
 
   redirect("/trades");
@@ -128,6 +104,13 @@ export default async function AddTradePage() {
             <option value="Neutral">Neutral</option>
             <option value="Fear">Fear</option>
             <option value="Greed">Greed</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm mb-1">Side</label>
+          <select name="side" className="w-full border rounded-md px-3 py-2">
+            <option value="long">Long</option>
+            <option value="short">Short</option>
           </select>
         </div>
         <div>
