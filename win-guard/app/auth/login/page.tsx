@@ -3,12 +3,12 @@
 export const dynamic = "force-dynamic";
 
 import { useState } from "react";
-import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getSupabaseClient } from "@/utils/supabaseClient";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const router = useRouter();
-  const supabase = getSupabaseBrowserClient();
+  const supabase = getSupabaseClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,10 +18,6 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    if (!supabase) {
-      setLoading(false);
-      return setError("Supabase env vars تنظیم نشده‌اند.");
-    }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) return setError(error.message);
@@ -57,7 +53,7 @@ export default function LoginPage() {
         </button>
       </form>
       <p className="text-sm mt-4 text-center">
-        حساب ندارید؟ <a className="underline" href="/auth/signup">ثبت‌نام</a>
+        حساب ندارید؟ <a className="underline" href="/auth">ثبت‌نام</a>
       </p>
     </div>
   );

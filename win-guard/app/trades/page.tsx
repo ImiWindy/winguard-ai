@@ -20,7 +20,7 @@ export default async function TradesListPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/auth/login");
+  if (!user) redirect("/auth");
 
   // read URL search params from headers
   const h = headers();
@@ -50,7 +50,7 @@ export default async function TradesListPage() {
     <div className="py-8 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Trades</h2>
-        <Link href="/trades/add" className="px-3 py-2 border rounded-md text-sm">Add Trade</Link>
+        <Link href="/trades/new" className="px-3 py-2 border rounded-md text-sm">Add Trade</Link>
       </div>
       <form className="flex flex-wrap gap-2 items-end">
         <div>
