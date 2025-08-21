@@ -1,5 +1,88 @@
 "use client";
 
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+
+const schema = z.object({
+  symbol: z.string().min(1, "Required").max(20),
+  entry_price: z.coerce.number().positive(),
+  exit_price: z.coerce.number().positive(),
+  position_size: z.coerce.number().positive(),
+  feeling: z.enum(["Neutral", "Fear", "Greed"]).default("Neutral"),
+  notes: z.string().max(1000).optional().or(z.literal("")),
+  screenshot: z.any().optional(),
+});
+
+export type TradeFormValues = z.infer<typeof schema>;
+
+type Props = {
+  defaultValues?: Partial<TradeFormValues>;
+  onSubmit: (values: TradeFormValues) => Promise<void> | void;
+  submittingText?: string;
+};
+
+export default function TradeForm({ defaultValues, onSubmit, submittingText = "Saving..." }: Props) {
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<TradeFormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      symbol: "",
+      entry_price: undefined as unknown as number,
+      exit_price: undefined as unknown as number,
+      position_size: undefined as unknown as number,
+      feeling: "Neutral",
+      notes: "",
+      ...defaultValues,
+    },
+  });
+
+  return (
+    <form className="grid gap-4" onSubmit={handleSubmit(onSubmit)}>
+      <div>
+        <label className="block text-sm mb-1">Symbol</label>
+        <Input {...register("symbol")} placeholder="e.g. BTCUSDT" />
+        {errors.symbol && <p className="text-xs text-red-600 mt-1">{errors.symbol.message}</p>}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-sm mb-1">Entry Price</label>
+          <Input type="number" step="0.00000001" {...register("entry_price", { valueAsNumber: true })} />
+          {errors.entry_price && <p className="text-xs text-red-600 mt-1">Must be a positive number</p>}
+        </div>
+        <div>
+          <label className="block text-sm mb-1">Exit Price</label>
+          <Input type="number" step="0.00000001" {...register("exit_price", { valueAsNumber: true })} />
+          {errors.exit_price && <p className="text-xs text-red-600 mt-1">Must be a positive number</p>}
+        </div>
+        <div>
+          <label className="block text-sm mb-1">Position Size</label>
+          <Input type="number" step="0.00000001" {...register("position_size", { valueAsNumber: true })} />
+          {errors.position_size && <p className="text-xs text-red-600 mt-1">Must be a positive number</p>}
+        </div>
+      </div>
+      <div>
+        <label className="block text-sm mb-1">Feeling</label>
+        <Select {...register("feeling")} options={[{ label: "Neutral", value: "Neutral" }, { label: "Fear", value: "Fear" }, { label: "Greed", value: "Greed" }]} />
+      </div>
+      <div>
+        <label className="block text-sm mb-1">Notes (optional)</label>
+        <Textarea rows={3} {...register("notes")} placeholder="..." />
+      </div>
+      <div>
+        <label className="block text-sm mb-1">Screenshot (optional)</label>
+        <Input type="file" accept="image/*" {...register("screenshot")} />
+      </div>
+      <Button disabled={isSubmitting}>{isSubmitting ? submittingText : "Save"}</Button>
+    </form>
+  );
+}
+
+"use client";
+
 import { useState } from "react";
 import { z } from "zod";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
